@@ -4,6 +4,7 @@ require("dotenv").config();
 
 const connectDB = require("./src/config/db");
 const paymentRoutes = require("./src/routes/payment.routes");
+const ccavenueRoutes = require("./src/routes/ccavenue.routes");
 
 const {
   ccavenueConfig,
@@ -17,6 +18,7 @@ const app = express();
 // Middleware
 app.use(cors("*"));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Connect MongoDB
 connectDB();
@@ -42,6 +44,7 @@ if (ccavenueConfig.workingKey) {
 
 // Routes
 app.use("/api/payment", paymentRoutes);
+app.use("/api/ccavenue", ccavenueRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

@@ -5,7 +5,21 @@ if (!API_URL) {
 }
 
 const handleResponse = async (response: Response) => {
-  const data = await response.json();
+  const text = await response.text();
+
+  console.log("API status:", response.status);
+  console.log("API content-type:", response.headers.get("content-type"));
+  console.log("API response:", text);
+
+  let data;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Server returned non-JSON response: ${text.substring(0, 200)}`
+    );
+  }
 
   if (!response.ok) {
     throw new Error(

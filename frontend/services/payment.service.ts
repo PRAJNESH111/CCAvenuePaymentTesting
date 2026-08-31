@@ -17,7 +17,25 @@ export const createOrder = async (
 export const initiatePayment = async (
   orderId: string
 ) => {
-  return api.post("/api/payment/initiate", {
+  return api.post("/api/ccavenue/initiate", {
+    orderId,
+  });
+};
+
+export const initiateCCAvenue = initiatePayment;
+
+export const verifyCCAvenue = async (
+  encResponse: string,
+  orderId?: string,
+) => {
+  return api.post("/api/ccavenue/verify", {
+    encResponse,
+    orderId,
+  });
+};
+
+export const cancelCCAvenue = async (orderId: string) => {
+  return api.post("/api/ccavenue/cancel", {
     orderId,
   });
 };

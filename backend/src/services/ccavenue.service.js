@@ -23,9 +23,9 @@ const buildPaymentRequest = async (orderId) => {
     throw new Error("BACKEND_PUBLIC_URL is not configured");
   }
 
-  const redirectUrl = `${process.env.BACKEND_PUBLIC_URL}/api/payment/response`;
+  const redirectUrl = `${process.env.BACKEND_PUBLIC_URL}/api/ccavenue/response`;
 
-  const cancelUrl = `${process.env.BACKEND_PUBLIC_URL}/api/payment/cancel`;
+  const cancelUrl = `${process.env.BACKEND_PUBLIC_URL}/api/ccavenue/cancel`;
 
   const paymentData = [
     `merchant_id=${ccavenueConfig.merchantId}`,

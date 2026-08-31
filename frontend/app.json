@@ -8,7 +8,40 @@
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "paytm",
+          "phonepe",
+          "tez",
+          "credpay",
+          "bhim",
+          "mobikwik",
+          "freecharge",
+          "amazonpay",
+          "navi",
+          "kiwi",
+          "payzapp",
+          "jupiter",
+          "omnicard",
+          "icici",
+          "popclubapp",
+          "sbiyono",
+          "myjio",
+          "slice-upi",
+          "bobupi",
+          "shriramone",
+          "whatsapp",
+          "com.rediff.pay",
+          "hdfcbanknb",
+          "aunb",
+          "yonolitenb",
+          "yesirisnb",
+          "fedmobilenb",
+          "axisbanknb"
+        ],
+        "NSCameraUsageDescription": "Camera permission is required to scan card details securely."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,6 +60,14 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withCCAvenue",
+      [
+        "expo-stallion-plugin",
+        {
+          "projectId": "6a8d2ff70940997c5ca12272",
+          "appToken": "spb_ap_XloanHmJb_XxS0l837NjvoMOyoiKtanjbnPiXIZxT1"
+        }
+      ],
       [
         "expo-splash-screen",
         {

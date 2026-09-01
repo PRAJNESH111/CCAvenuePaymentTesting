@@ -51,7 +51,7 @@ maven {
 The app dependency is:
 
 ```gradle
-implementation("com.ccavenue.indiasdk:sdk:2.0.0")
+implementation("com.ccavenue.indiasdk:sdk:2.1.5")
 ```
 
 Build a custom native client after changing native dependencies:

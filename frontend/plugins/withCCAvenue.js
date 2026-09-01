@@ -7,7 +7,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ccavenueAndroidSdkDependency =
-  'com.ccavenue.indiasdk:sdk:2.0.0';
+  'com.ccavenue.indiasdk:sdk:2.1.5';
 
 const localPropertiesLoader = `
 def ccavenueLocalProperties = new Properties()

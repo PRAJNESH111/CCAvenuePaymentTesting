@@ -125,7 +125,18 @@ export default function CCAvenueCheckout() {
 
       sdkStarted = true;
       const sdkResult = await new CCAvenueSDK().initTransaction(order);
-      const parsedSdkResult = parseSdkResponse(sdkResult);
+
+console.log(
+  "🔥 CCAvenue SDK RAW RESULT:",
+  sdkResult
+);
+
+console.log(
+  "🔥 CCAvenue SDK RESULT JSON:",
+  JSON.stringify(sdkResult, null, 2)
+);
+
+const parsedSdkResult = parseSdkResponse(sdkResult);
       const data = parsedSdkResult?.data || parsedSdkResult;
       const encResponse = data?.encResponse;
 

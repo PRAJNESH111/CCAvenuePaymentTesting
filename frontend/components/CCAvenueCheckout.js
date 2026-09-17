@@ -118,7 +118,7 @@ export default function CCAvenueCheckout() {
         accessCode: payment.accessCode,
         encRequest: payment.encRequest,
         paymentEnvironment: PAYMENT_ENVIRONMENT,
-        encryptionMode: "aes128",
+        encryptionMode: "aes256",
         appColor: "#1F46BD",
         fontColor: "#FFFFFF",
       });

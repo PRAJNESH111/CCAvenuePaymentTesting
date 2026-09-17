@@ -38,7 +38,7 @@ const buildPaymentRequest = async (orderId) => {
   ].join("&");
 
   console.log("CCAvenue payment parameters prepared for:", payment.orderId);
-
+  console.log("CCAvenue payment parameters:", paymentData);
   const encRequest = encrypt(paymentData, ccavenueConfig.workingKey);
 
   return {

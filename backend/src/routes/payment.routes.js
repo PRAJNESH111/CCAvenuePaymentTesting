@@ -13,5 +13,6 @@ router.post("/create-order", createOrder);
 router.post("/initiate", initiatePayment);
 
 router.post("/response", handlePaymentResponse);
+router.get("/response", handlePaymentResponse);
 
 module.exports = router;

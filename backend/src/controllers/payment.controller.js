@@ -25,7 +25,20 @@ const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
 
   const decryptedResponse = decrypt(encResponse, ccavenueConfig.workingKey);
   const responseParams = new URLSearchParams(decryptedResponse);
-  const responseOrderId = responseParams.get("order_id");
+  const responseOrderId =
+    responseParams.get("order_id") || responseParams.get("orderId");
+  const responseCurrency =
+    responseParams.get("currency") || responseParams.get("Currency");
+  const responseAmount = responseParams.get("amount");
+  const orderStatus =
+    responseParams.get("order_status") || responseParams.get("orderStatus");
+
+  if (!responseOrderId || !responseCurrency || !responseAmount || !orderStatus) {
+    throw new Error(
+      "CCAvenue response is missing order ID, currency, amount, or order status",
+    );
+  }
+
   const orderId = responseOrderId || fallbackOrderId;
 
   if (!orderId) {
@@ -42,9 +55,16 @@ const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
     throw new Error("Payment order not found");
   }
 
-  const orderStatus = responseParams.get("order_status");
   const trackingId = responseParams.get("tracking_id");
   const paymentMode = responseParams.get("payment_mode");
+
+  if (responseCurrency.toUpperCase() !== payment.currency.toUpperCase()) {
+    throw new Error("CCAvenue response currency does not match the order");
+  }
+
+  if (Number(responseAmount).toFixed(2) !== Number(payment.amount).toFixed(2)) {
+    throw new Error("CCAvenue response amount does not match the order");
+  }
 
   payment.status = getPaymentStatus(orderStatus);
   payment.transactionId = trackingId || null;
@@ -152,8 +172,17 @@ const initiatePayment = async (req, res) => {
 };
 const handlePaymentResponse = async (req, res) => {
   try {
-    const { encResp } = req.body;
-    const result = await processEncryptedResponse(encResp);
+    const encResp =
+      req.body.encResp ||
+      req.body.encResponse ||
+      req.query.encResp ||
+      req.query.encResponse;
+    const fallbackOrderId =
+      req.body.orderId ||
+      req.body.order_id ||
+      req.query.orderId ||
+      req.query.order_id;
+    const result = await processEncryptedResponse(encResp, fallbackOrderId);
     const { payment } = result;
 
     return res.send(`
@@ -206,7 +235,11 @@ const verifyPayment = async (req, res) => {
 
 const cancelPayment = async (req, res) => {
   try {
-    const orderId = req.body.orderId || req.body.order_id || req.query.orderId;
+    const orderId =
+      req.body.orderId ||
+      req.body.order_id ||
+      req.query.orderId ||
+      req.query.order_id;
 
     if (!orderId) {
       return res.status(400).json({

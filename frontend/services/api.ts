@@ -22,6 +22,15 @@ const handleResponse = async (response: Response) => {
   }
 
   if (!response.ok) {
+    if (
+      response.status === 502 &&
+      text.includes("ERR_NGROK_8012")
+    ) {
+      throw new Error(
+        "Backend is not reachable through ngrok. Start the backend on localhost:5000 and keep the ngrok tunnel running.",
+      );
+    }
+
     throw new Error(
       data.message || `API Error: ${response.status}`
     );

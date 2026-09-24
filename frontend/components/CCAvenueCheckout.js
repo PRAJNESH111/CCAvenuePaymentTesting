@@ -35,6 +35,16 @@ const parseSdkResponse = (result) => {
     try {
       return JSON.parse(result);
     } catch {
+      const statusMatch = result.match(/statusCode\s*=\s*([0-9]+)/i);
+      const messageMatch = result.match(/statusMessage\s*=\s*([^,)]*)/i);
+
+      if (statusMatch || messageMatch) {
+        return {
+          statusCode: statusMatch?.[1],
+          statusMessage: messageMatch?.[1]?.trim(),
+        };
+      }
+
       return null;
     }
   }
@@ -118,7 +128,7 @@ export default function CCAvenueCheckout() {
         accessCode: payment.accessCode,
         encRequest: payment.encRequest,
         paymentEnvironment: PAYMENT_ENVIRONMENT,
-        encryptionMode: "aes256",
+        encryptionMode: "aes128",
         appColor: "#1F46BD",
         fontColor: "#FFFFFF",
       });
@@ -136,9 +146,25 @@ console.log(
   JSON.stringify(sdkResult, null, 2)
 );
 
-const parsedSdkResult = parseSdkResponse(sdkResult);
+      const parsedSdkResult = parseSdkResponse(sdkResult);
       const data = parsedSdkResult?.data || parsedSdkResult;
       const encResponse = data?.encResponse;
+      const sdkStatusCode = data?.statusCode ?? parsedSdkResult?.statusCode;
+      const sdkStatusMessage =
+        data?.statusMessage ?? parsedSdkResult?.statusMessage;
+
+      console.log("CCAvenue SDK status:", {
+        statusCode: sdkStatusCode,
+        statusMessage: sdkStatusMessage,
+      });
+
+      if (sdkStatusCode !== undefined && String(sdkStatusCode) !== "0") {
+        throw new Error(
+          `CCAvenue error ${sdkStatusCode}: ${
+            sdkStatusMessage || "Unknown CCAvenue error"
+          }`,
+        );
+      }
 
       if (!encResponse) {
         const sdkStatus = String(data?.orderStatus || "").toLowerCase();

@@ -16,6 +16,30 @@ CCAvenue WebView flow.
 
 The CCAvenue working key and merchant credentials stay on the backend.
 
+The backend builds the SDK preconfiguration payload from the stored order and
+environment configuration. Its non-sensitive shape is:
+
+```json
+{
+  "amount": <actual order amount>,
+  "callbackUrl": "<BACKEND_PUBLIC_URL>/api/ccavenue/response",
+  "orderId": "<actual order ID>",
+  "regId": "<CCAVENUE_MERCHANT_ID>",
+  "currency": "INR",
+  "tId": "",
+  "subAccountId": "",
+  "merchantParam1": "",
+  "merchantParam2": "",
+  "merchantParam3": "",
+  "merchantParam4": "",
+  "merchantParam5": ""
+}
+```
+
+The payload is converted with `JSON.stringify()` and the JSON text is encrypted
+with AES-128 on the backend as `encRequest`; the React Native app receives only
+`accessCode` and `encRequest` for the SDK.
+
 ## Android setup
 
 The generated project already contains the required repository and dependency

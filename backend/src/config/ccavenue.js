@@ -3,6 +3,7 @@ const ccavenueConfig = {
   accessCode: process.env.CCAVENUE_ACCESS_CODE,
   workingKey: process.env.CCAVENUE_WORKING_KEY,
   baseUrl: process.env.CCAVENUE_BASE_URL,
+  backendPublicUrl: process.env.BACKEND_PUBLIC_URL,
 };
 
 const validateCCAvenueConfig = () => {
@@ -11,6 +12,7 @@ const validateCCAvenueConfig = () => {
     ["CCAVENUE_ACCESS_CODE", ccavenueConfig.accessCode],
     ["CCAVENUE_WORKING_KEY", ccavenueConfig.workingKey],
     ["CCAVENUE_BASE_URL", ccavenueConfig.baseUrl],
+    ["BACKEND_PUBLIC_URL", ccavenueConfig.backendPublicUrl],
   ];
 
   const missingVariables = requiredVariables

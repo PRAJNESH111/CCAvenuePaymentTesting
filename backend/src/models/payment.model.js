@@ -36,6 +36,11 @@ const paymentSchema = new mongoose.Schema(
       default: null,
     },
 
+    ccaRequest: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+
     ccaResponse: {
       type: mongoose.Schema.Types.Mixed,
       default: null,

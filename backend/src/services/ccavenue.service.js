@@ -19,44 +19,50 @@ const buildPaymentRequest = async (orderId) => {
     );
   }
 
-  if (!process.env.BACKEND_PUBLIC_URL) {
+  if (!ccavenueConfig.backendPublicUrl) {
     throw new Error("BACKEND_PUBLIC_URL is not configured");
   }
 
-  const redirectUrl = `${process.env.BACKEND_PUBLIC_URL}/api/ccavenue/response`;
+  const preconfiguration = {
+    amount: payment.amount,
+    callbackUrl: `${ccavenueConfig.backendPublicUrl}/api/ccavenue/response`,
+    orderId: payment.orderId,
+    regId: Number(ccavenueConfig.merchantId),
+    currency: payment.currency,
+    tId: "",
+    subAccountId: "",
+    paymentType: "debitcard",
+  };
 
-  const cancelUrl = `${process.env.BACKEND_PUBLIC_URL}/api/ccavenue/cancel`;
+  const paymentData = JSON.stringify(preconfiguration);
 
-  const paymentData = [
-    `merchant_id=${ccavenueConfig.merchantId}`,
-    `order_id=${payment.orderId}`,
-    `currency=${payment.currency}`,
-    `amount=${payment.amount.toFixed(2)}`,
-    `redirect_url=${redirectUrl}`,
-    `cancel_url=${cancelUrl}`,
-    `language=EN`,
-  ].join("&");
+  console.log("CCAvenue JSON request:", preconfiguration);
 
-  console.log("CCAvenue payment parameters prepared for:", payment.orderId);
-  console.log("CCAvenue payment parameters:", paymentData);
   const encRequest = encrypt(paymentData, ccavenueConfig.workingKey);
+  console.log("CCAvenue AES-128 encryption succeeded");
+
+  payment.ccaRequest = preconfiguration;
+  await payment.save();
 
   return {
     orderId: payment.orderId,
     amount: payment.amount,
     currency: payment.currency,
+    callbackUrl: preconfiguration.callbackUrl,
+    regId: preconfiguration.regId,
+    tId: preconfiguration.tId,
+    subAccountId: preconfiguration.subAccountId,
+    merchantParam1: preconfiguration.merchantParam1,
+    merchantParam2: preconfiguration.merchantParam2,
+    merchantParam3: preconfiguration.merchantParam3,
+    merchantParam4: preconfiguration.merchantParam4,
+    merchantParam5: preconfiguration.merchantParam5,
+    preconfiguration,
     accessCode: ccavenueConfig.accessCode,
     encRequest,
     paymentUrl: ccavenueConfig.baseUrl,
   };
 };
-console.log("CCAvenue request check:", {
-  merchantIdPresent: Boolean(ccavenueConfig.merchantId),
-  accessCodePresent: Boolean(ccavenueConfig.accessCode),
-  workingKeyPresent: Boolean(ccavenueConfig.workingKey),
-  workingKeyLength: ccavenueConfig.workingKey?.length,
-  baseUrl: ccavenueConfig.baseUrl,
-});
 module.exports = {
   buildPaymentRequest,
 };

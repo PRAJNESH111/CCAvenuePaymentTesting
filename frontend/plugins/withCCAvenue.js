@@ -1,5 +1,6 @@
 const {
   withAppBuildGradle,
+  withAndroidManifest,
   withDangerousMod,
   withProjectBuildGradle,
 } = require("@expo/config-plugins");
@@ -31,6 +32,30 @@ const githubPackagesRepository = `
 `;
 
 module.exports = function withCCAvenue(config) {
+  config = withAndroidManifest(config, (androidConfig) => {
+    const application = androidConfig.modResults.manifest.application?.[0];
+
+    if (application) {
+      const existingReplacements = String(
+        application.$?.["tools:replace"] || "",
+      )
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      if (!existingReplacements.includes("android:allowBackup")) {
+        existingReplacements.push("android:allowBackup");
+      }
+
+      application.$ = {
+        ...application.$,
+        "tools:replace": existingReplacements.join(","),
+      };
+    }
+
+    return androidConfig;
+  });
+
   config = withProjectBuildGradle(config, (projectConfig) => {
     if (projectConfig.modResults.language !== "groovy") {
       return projectConfig;

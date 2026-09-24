@@ -69,9 +69,12 @@ const isAbortError = (error) => {
   return message.includes("abort") || message.includes("cancel");
 };
 
-export default function CCAvenueCheckout() {
+export default function CCAvenueCheckout({ customer } = {}) {
   const [orderId, setOrderId] = useState("");
   const [amount, setAmount] = useState("100");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerCountry, setCustomerCountry] = useState("India");
   const [loading, setLoading] = useState(false);
 
   const navigateToResult = (status, resultOrderId, title, message) => {
@@ -107,10 +110,31 @@ export default function CCAvenueCheckout() {
       return;
     }
 
+    const trimmedEmail = String(customer?.email ?? customerEmail).trim();
+    const trimmedPhone = String(customer?.phone ?? customerPhone).trim();
+    const trimmedCountry =
+      String(customer?.country ?? customerCountry).trim() || "India";
+
+    if (!trimmedEmail || !trimmedPhone) {
+      Alert.alert(
+        "Missing customer details",
+        "Please enter your email address and phone number.",
+      );
+      return;
+    }
+
     try {
       setLoading(true);
 
-      const orderResponse = await createOrder(trimmedOrderId, numericAmount);
+      const orderResponse = await createOrder(
+        trimmedOrderId,
+        numericAmount,
+        {
+          email: trimmedEmail,
+          phone: trimmedPhone,
+          country: trimmedCountry,
+        },
+      );
       if (!orderResponse.success) {
         throw new Error(orderResponse.message || "Order creation failed");
       }
@@ -263,6 +287,36 @@ console.log(
         onChangeText={setAmount}
         placeholder="100"
         keyboardType="decimal-pad"
+        style={styles.input}
+        editable={!loading}
+      />
+
+      <Text style={styles.label}>Email</Text>
+      <TextInput
+        value={customerEmail}
+        onChangeText={setCustomerEmail}
+        placeholder="customer@example.com"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        style={styles.input}
+        editable={!loading}
+      />
+
+      <Text style={styles.label}>Phone number</Text>
+      <TextInput
+        value={customerPhone}
+        onChangeText={setCustomerPhone}
+        placeholder="9876543210"
+        keyboardType="phone-pad"
+        style={styles.input}
+        editable={!loading}
+      />
+
+      <Text style={styles.label}>Country</Text>
+      <TextInput
+        value={customerCountry}
+        onChangeText={setCustomerCountry}
+        placeholder="India"
         style={styles.input}
         editable={!loading}
       />

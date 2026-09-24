@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
+import * as Linking from "expo-linking";
 import { WebView } from "react-native-webview";
 
 export default function PaymentWebViewScreen() {
@@ -65,10 +66,13 @@ export default function PaymentWebViewScreen() {
     }
 
     if (url.startsWith("avenue-testing://payment-result")) {
+      const { queryParams } = Linking.parse(url);
+
       router.replace({
         pathname: "/payment-result",
         params: {
-          orderId: url.split("orderId=")[1] || orderId,
+          orderId: String(queryParams?.orderId || orderId),
+          status: String(queryParams?.status || "Failed"),
         },
       });
 

@@ -23,6 +23,19 @@ const buildPaymentRequest = async (orderId) => {
     throw new Error("BACKEND_PUBLIC_URL is not configured");
   }
 
+  const billingEmail =
+    typeof payment.billingEmail === "string" ? payment.billingEmail.trim() : "";
+  const billingTel =
+    payment.billingTel === undefined || payment.billingTel === null
+      ? ""
+      : String(payment.billingTel).trim();
+
+  if (!billingEmail || !billingTel) {
+    throw new Error(
+      "billingEmail and billingTel are required before initiating CCAvenue payment",
+    );
+  }
+
   const preconfiguration = {
     amount: payment.amount,
     callbackUrl: `${ccavenueConfig.backendPublicUrl}/api/ccavenue/response`,
@@ -31,7 +44,15 @@ const buildPaymentRequest = async (orderId) => {
     currency: payment.currency,
     tId: "",
     subAccountId: "",
-    paymentType: "debitcard",
+    paymentType: "upi",
+    merchantParam1: "",
+    merchantParam2: "",
+    merchantParam3: "",
+    merchantParam4: "",
+    merchantParam5: "",
+    billingCountry: payment.billingCountry || "India",
+    billingTel,
+    billingEmail,
   };
 
   const paymentData = JSON.stringify(preconfiguration);

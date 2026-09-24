@@ -9,7 +9,6 @@ const handleResponse = async (response: Response) => {
 
   console.log("API status:", response.status);
   console.log("API content-type:", response.headers.get("content-type"));
-  console.log("API response:", text);
 
   let data;
 

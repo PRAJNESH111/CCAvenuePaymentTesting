@@ -85,7 +85,13 @@ const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
 
 const createOrder = async (req, res) => {
   try {
-    const { orderId, amount } = req.body;
+    const {
+      orderId,
+      amount,
+      billingEmail,
+      billingTel,
+      billingCountry,
+    } = req.body;
 
     if (!orderId || !amount) {
       return res.status(400).json({
@@ -100,6 +106,24 @@ const createOrder = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Amount must be a valid positive number",
+      });
+    }
+
+    const normalizedBillingEmail =
+      typeof billingEmail === "string" ? billingEmail.trim() : "";
+    const normalizedBillingTel =
+      billingTel === undefined || billingTel === null
+        ? ""
+        : String(billingTel).trim();
+    const normalizedBillingCountry =
+      typeof billingCountry === "string" && billingCountry.trim()
+        ? billingCountry.trim()
+        : "India";
+
+    if (!normalizedBillingEmail || !normalizedBillingTel) {
+      return res.status(400).json({
+        success: false,
+        message: "billingEmail and billingTel are required",
       });
     }
 
@@ -119,6 +143,9 @@ const createOrder = async (req, res) => {
       orderId,
       amount: numericAmount,
       currency: "INR",
+      billingEmail: normalizedBillingEmail,
+      billingTel: normalizedBillingTel,
+      billingCountry: normalizedBillingCountry,
       status: "Pending",
     });
 
@@ -163,7 +190,12 @@ const initiatePayment = async (req, res) => {
   } catch (error) {
     console.error("CCAvenue initiate payment error:", error);
 
-    return res.status(500).json({
+    const statusCode =
+      error.message?.includes("billingEmail and billingTel are required")
+        ? 400
+        : 500;
+
+    return res.status(statusCode).json({
       success: false,
       message: "Failed to initiate CCAvenue payment",
       error: error.message,

@@ -9,7 +9,9 @@ export default function PaymentResult() {
 
   const normalizedStatus = (status || "Unknown").toLowerCase();
   const isSuccess = normalizedStatus === "success";
-  const isCancelled = normalizedStatus === "cancelled";
+  const isCancelled = ["cancelled", "canceled", "aborted"].includes(
+    normalizedStatus,
+  );
 
   return (
     <View style={styles.container}>

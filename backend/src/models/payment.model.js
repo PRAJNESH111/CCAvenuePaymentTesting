@@ -20,6 +20,24 @@ const paymentSchema = new mongoose.Schema(
       default: "INR",
     },
 
+    billingEmail: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    billingTel: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    billingCountry: {
+      type: String,
+      trim: true,
+      default: "India",
+    },
+
     status: {
       type: String,
       enum: ["Pending", "Success", "Failed", "Cancelled"],

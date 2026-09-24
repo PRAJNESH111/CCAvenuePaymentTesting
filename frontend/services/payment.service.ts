@@ -6,11 +6,20 @@ export const checkBackend = async () => {
 
 export const createOrder = async (
   orderId: string,
-  amount: number
+  amount: number,
+  customer?: {
+    email?: string;
+    phone?: string | number;
+    country?: string;
+  },
 ) => {
   return api.post("/api/payment/create-order", {
     orderId,
     amount,
+    billingEmail: customer?.email,
+    billingTel:
+      customer?.phone === undefined ? undefined : String(customer.phone),
+    billingCountry: customer?.country,
   });
 };
 

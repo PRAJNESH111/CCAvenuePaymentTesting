@@ -1,5 +1,13 @@
 import type { ComponentType } from "react";
 
-declare const CCAvenueCheckout: ComponentType;
+type CustomerDetails = {
+  email?: string;
+  phone?: string | number;
+  country?: string;
+};
+
+declare const CCAvenueCheckout: ComponentType<{
+  customer?: CustomerDetails;
+}>;
 
 export default CCAvenueCheckout;

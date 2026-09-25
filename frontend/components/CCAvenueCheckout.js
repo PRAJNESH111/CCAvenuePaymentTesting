@@ -37,11 +37,21 @@ const parseSdkResponse = (result) => {
     } catch {
       const statusMatch = result.match(/statusCode\s*=\s*([0-9]+)/i);
       const messageMatch = result.match(/statusMessage\s*=\s*([^,)]*)/i);
+      const orderStatusMatch = result.match(/orderStatus\s*=\s*([^,)]*)/i);
+      const accessCodeMatch = result.match(/accessCode\s*=\s*([^,)]*)/i);
+      const encResponseMatch = result.match(
+        /encResponse\s*=\s*([0-9a-f]+)/i,
+      );
 
-      if (statusMatch || messageMatch) {
+      if (statusMatch || messageMatch || encResponseMatch) {
         return {
           statusCode: statusMatch?.[1],
           statusMessage: messageMatch?.[1]?.trim(),
+          data: {
+            orderStatus: orderStatusMatch?.[1]?.trim(),
+            accessCode: accessCodeMatch?.[1]?.trim(),
+            encResponse: encResponseMatch?.[1]?.trim(),
+          },
         };
       }
 
@@ -160,16 +170,6 @@ export default function CCAvenueCheckout({ customer } = {}) {
       sdkStarted = true;
       const sdkResult = await new CCAvenueSDK().initTransaction(order);
 
-console.log(
-  "🔥 CCAvenue SDK RAW RESULT:",
-  sdkResult
-);
-
-console.log(
-  "🔥 CCAvenue SDK RESULT JSON:",
-  JSON.stringify(sdkResult, null, 2)
-);
-
       const parsedSdkResult = parseSdkResponse(sdkResult);
       const data = parsedSdkResult?.data || parsedSdkResult;
       const encResponse = data?.encResponse;
@@ -180,6 +180,9 @@ console.log(
       console.log("CCAvenue SDK status:", {
         statusCode: sdkStatusCode,
         statusMessage: sdkStatusMessage,
+        orderStatus: data?.orderStatus,
+        hasEncryptedResponse: Boolean(encResponse),
+        encryptedResponseLength: encResponse?.length || 0,
       });
 
       if (sdkStatusCode !== undefined && String(sdkStatusCode) !== "0") {

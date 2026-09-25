@@ -12,8 +12,21 @@ const {
 } = require("./src/config/ccavenue");
 
 const { encrypt, decrypt } = require("./src/utils/ccavenue.crypto");
+const {
+  getOrder,
+  getOrders,
+  cancelOrder,
+  refundOrder,
+} = require("./src/controllers/payment.controller");
 
 const app = express();
+
+// Development request logger. This confirms which backend process receives
+// requests before any route-specific handler runs.
+app.use((req, res, next) => {
+  console.log(`[API] ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // Middleware
 app.use(cors("*"));
@@ -45,6 +58,11 @@ if (ccavenueConfig.workingKey) {
 // Routes
 app.use("/api/payment", paymentRoutes);
 app.use("/api/ccavenue", ccavenueRoutes);
+app.get("/api/orders", getOrders);
+app.get("/api/orders/:orderId", getOrder);
+app.post("/api/orders/:orderId/cancel", cancelOrder);
+app.post("/api/orders/:orderId/refund", refundOrder);
+console.log("Orders routes registered: GET /api/orders, GET /api/orders/:orderId");
 
 // Health check
 app.get("/api/health", (req, res) => {

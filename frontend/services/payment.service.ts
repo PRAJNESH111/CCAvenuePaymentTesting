@@ -48,3 +48,19 @@ export const cancelCCAvenue = async (orderId: string) => {
     orderId,
   });
 };
+
+export const getOrders = async () => {
+  return api.get("/api/orders");
+};
+
+export const getOrderById = async (orderId: string) => {
+  return api.get(`/api/orders/${encodeURIComponent(orderId)}`);
+};
+
+export const cancelOrder = async (orderId: string) => {
+  return api.post(`/api/orders/${encodeURIComponent(orderId)}/cancel`, {});
+};
+
+export const refundOrder = async (orderId: string) => {
+  return api.post(`/api/orders/${encodeURIComponent(orderId)}/refund`, {});
+};

@@ -34,6 +34,13 @@ export default function HomeScreen() {
       >
         <Text style={styles.buttonText}>GO TO PAYMENT</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.button, styles.secondaryButton]}
+        onPress={() => router.push("/orders")}
+      >
+        <Text style={styles.buttonText}>VIEW ORDERS</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -63,6 +70,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 25,
     paddingVertical: 15,
     borderRadius: 8,
+    marginTop: 12,
+    minWidth: 200,
+    alignItems: "center",
+  },
+
+  secondaryButton: {
+    backgroundColor: "#0d6efd",
   },
 
   buttonText: {

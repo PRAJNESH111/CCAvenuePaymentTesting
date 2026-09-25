@@ -1,8 +1,15 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+import { Platform } from "react-native";
 
-if (!API_URL) {
-  throw new Error("EXPO_PUBLIC_API_URL is not configured");
-}
+const localDevelopmentApiUrl =
+  Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
+
+const DEFAULT_API_URLS = [
+  process.env.EXPO_PUBLIC_API_URL?.trim(),
+  localDevelopmentApiUrl,
+].filter(Boolean) as string[];
+
+const buildApiUrl = (baseUrl: string, endpoint: string) =>
+  `${baseUrl.replace(/\/$/, "")}${endpoint}`;
 
 const handleResponse = async (response: Response) => {
   const text = await response.text();
@@ -16,7 +23,7 @@ const handleResponse = async (response: Response) => {
     data = JSON.parse(text);
   } catch {
     throw new Error(
-      `Server returned non-JSON response: ${text.substring(0, 200)}`
+      `Server returned non-JSON response: ${text.substring(0, 200)}`,
     );
   }
 
@@ -30,30 +37,52 @@ const handleResponse = async (response: Response) => {
       );
     }
 
-    throw new Error(
-      data.message || `API Error: ${response.status}`
-    );
+    throw new Error(data.message || `API Error: ${response.status}`);
   }
 
   return data;
 };
 
-export const api = {
-  get: async (endpoint: string) => {
-    const response = await fetch(`${API_URL}${endpoint}`);
+const callApi = async (
+  endpoint: string,
+  options?: RequestInit,
+  attemptUrls: string[] = DEFAULT_API_URLS,
+) => {
+  const [baseUrl, ...rest] = attemptUrls;
+
+  if (!baseUrl) {
+    throw new Error("EXPO_PUBLIC_API_URL is not configured");
+  }
+
+  try {
+    const response = await fetch(buildApiUrl(baseUrl, endpoint), options);
+
+    if (response.status === 404 && rest.length > 0) {
+      return callApi(endpoint, options, rest);
+    }
 
     return handleResponse(response);
+  } catch (error) {
+    if (rest.length > 0) {
+      return callApi(endpoint, options, rest);
+    }
+
+    throw error;
+  }
+};
+
+export const api = {
+  get: async (endpoint: string) => {
+    return callApi(endpoint);
   },
 
   post: async (endpoint: string, data: unknown) => {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    return callApi(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(data),
     });
-
-    return handleResponse(response);
   },
 };

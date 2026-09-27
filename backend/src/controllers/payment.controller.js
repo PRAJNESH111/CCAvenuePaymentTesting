@@ -183,18 +183,60 @@ const buildCCAvenueRefundReference = () => {
   return `RF-${Date.now()}-${randomSuffix}`;
 };
 
-const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
+const savePaymentVerificationFailure = async (
+  payment,
+  responseParams,
+  reason,
+) => {
+  if (payment.status === "Pending") {
+    payment.status = "Failed";
+    payment.ccaResponse =
+      typeof responseParams?.entries === "function"
+        ? Object.fromEntries(responseParams.entries())
+        : responseParams;
+    await payment.save();
+
+    console.log("[CCA PAYMENT STATUS] verification failed:", {
+      orderId: payment.orderId,
+      reason,
+    });
+    console.log("[ORDER UPDATED] payment:", {
+      orderId: payment.orderId,
+      status: payment.status,
+    });
+  }
+};
+
+const maskSecret = (value) => {
+  const text = value === null || value === undefined ? "" : String(value);
+
+  if (!text) {
+    return "";
+  }
+
+  if (text.length <= 4) {
+    return "*".repeat(text.length);
+  }
+
+  return `${"*".repeat(Math.max(0, text.length - 4))}${text.slice(-4)}`;
+};
+
+const processEncryptedResponse = async (
+  encResponse,
+  fallbackOrderId,
+  source = "verify",
+) => {
   if (!encResponse) {
     throw new Error("Missing encResponse");
   }
 
   const normalizedEncResponse = String(encResponse).trim();
   console.log(
-    "CCAvenue transaction response ciphertext length:",
+    `[CCA ${source.toUpperCase()}] response ciphertext length:`,
     normalizedEncResponse.length,
   );
   console.log(
-    "CCAvenue transaction response ciphertext appears hex:",
+    `[CCA ${source.toUpperCase()}] response ciphertext appears hex:`,
     normalizedEncResponse.length % 2 === 0 &&
       /^[0-9a-f]+$/i.test(normalizedEncResponse),
   );
@@ -217,10 +259,10 @@ const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
     );
   }
 
-  console.log(
-    "CCAvenue decrypted response fields:",
-    Object.keys(responseParams),
-  );
+  console.log("[CCA DECRYPT] response fields:", {
+    source,
+    fields: Object.keys(responseParams),
+  });
 
   const getResponseValue = (key) =>
     typeof responseParams.get === "function"
@@ -242,7 +284,7 @@ const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
     getResponseValue("order_status") ||
     getResponseValue("orderStatus");
 
-  console.log("CCAvenue decrypted transaction summary:", {
+  console.log(`[CCA ${source.toUpperCase()}] transaction summary:`, {
     orderId: responseOrderId || null,
     currency: responseCurrency || null,
     amount: responseAmount || null,
@@ -265,7 +307,7 @@ const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
     throw new Error("CCAvenue response order does not match the requested order");
   }
 
-  const payment = await Payment.findOne({ orderId });
+  let payment = await Payment.findOne({ orderId });
 
   if (!payment) {
     throw new Error("Payment order not found");
@@ -281,24 +323,121 @@ const processEncryptedResponse = async (encResponse, fallbackOrderId) => {
     trackingId ||
     null;
 
-  if (responseCurrency.toUpperCase() !== payment.currency.toUpperCase()) {
+  if (
+    String(responseCurrency).toUpperCase() !==
+    String(payment.currency).toUpperCase()
+  ) {
+    await savePaymentVerificationFailure(
+      payment,
+      responseParams,
+      "CCAvenue response currency does not match the order",
+    );
     throw new Error("CCAvenue response currency does not match the order");
   }
 
   if (Number(responseAmount).toFixed(2) !== Number(payment.amount).toFixed(2)) {
+    await savePaymentVerificationFailure(
+      payment,
+      responseParams,
+      "CCAvenue response amount does not match the order",
+    );
     throw new Error("CCAvenue response amount does not match the order");
   }
 
-  payment.status = getPaymentStatus(orderStatus);
-  payment.transactionId = trackingId || null;
-  payment.paymentMode = paymentMode || null;
-  payment.ccavenueReferenceNo = ccavenueReferenceNo || payment.ccavenueReferenceNo;
-  payment.ccaResponse =
-    typeof responseParams.entries === "function"
-      ? Object.fromEntries(responseParams.entries())
-      : responseParams;
+  const nextStatus = getPaymentStatus(orderStatus);
 
-  await payment.save();
+  if (nextStatus === "Success" && !ccavenueReferenceNo) {
+    await savePaymentVerificationFailure(
+      payment,
+      responseParams,
+      "CCAvenue successful response is missing transaction/reference information",
+    );
+    throw new Error(
+      "CCAvenue successful response is missing transaction/reference information",
+    );
+  }
+
+  if (payment.status === "Success" && nextStatus === "Success") {
+    if (
+      payment.ccavenueReferenceNo &&
+      ccavenueReferenceNo &&
+      payment.ccavenueReferenceNo !== ccavenueReferenceNo
+    ) {
+      throw new Error(
+        "CCAvenue response reference does not match the already verified transaction",
+      );
+    }
+
+    console.log("[CCA VERIFY] payment already verified; returning saved status");
+
+    return {
+      payment,
+      orderStatus,
+      ccaResponse: payment.ccaResponse,
+      alreadyVerified: true,
+    };
+  }
+
+  if (payment.status !== "Pending") {
+    if (payment.status === nextStatus) {
+      console.log("[CCA VERIFY] payment already finalized; returning saved status");
+
+      return {
+        payment,
+        orderStatus,
+        ccaResponse: payment.ccaResponse,
+        alreadyFinalized: true,
+      };
+    }
+
+    throw new Error(
+      `Payment order is already finalized with status: ${payment.status}`,
+    );
+  }
+
+  const finalizedPayment = await Payment.findOneAndUpdate(
+    { _id: payment._id, status: "Pending" },
+    {
+      $set: {
+        status: nextStatus,
+        transactionId: trackingId || payment.transactionId || null,
+        paymentMode: paymentMode || payment.paymentMode || null,
+        ccavenueReferenceNo:
+          ccavenueReferenceNo || payment.ccavenueReferenceNo,
+        ccaResponse:
+          typeof responseParams.entries === "function"
+            ? Object.fromEntries(responseParams.entries())
+            : responseParams,
+      },
+    },
+    { new: true },
+  );
+
+  if (!finalizedPayment) {
+    const latestPayment = await Payment.findById(payment._id);
+
+    if (latestPayment?.status === nextStatus) {
+      console.log("[CCA VERIFY] concurrent verification already finalized payment");
+
+      return {
+        payment: latestPayment,
+        orderStatus,
+        ccaResponse: latestPayment.ccaResponse,
+        alreadyFinalized: true,
+      };
+    }
+
+    throw new Error("Payment order could not be finalized safely");
+  }
+
+  payment = finalizedPayment;
+
+  console.log("[CCA PAYMENT STATUS] status:", payment.status);
+  console.log("[ORDER UPDATED] payment:", {
+    orderId: payment.orderId,
+    status: payment.status,
+    hasReference: Boolean(payment.ccavenueReferenceNo),
+  });
 
   return {
     payment,
@@ -442,6 +581,13 @@ const createOrder = async (req, res) => {
       status: "Pending",
     });
 
+    console.log("[PAYMENT CREATE] order created:", {
+      orderId: payment.orderId,
+      amount: payment.amount,
+      currency: payment.currency,
+      status: payment.status,
+    });
+
     return res.status(201).json({
       success: true,
       message: "Order created successfully",
@@ -470,6 +616,14 @@ const initiatePayment = async (req, res) => {
     }
 
     const paymentRequest = await buildPaymentRequest(orderId);
+
+    console.log("[CCA INITIATE] payment request created:", {
+      orderId: paymentRequest.orderId,
+      amount: paymentRequest.amount,
+      currency: paymentRequest.currency,
+      hasAccessCode: Boolean(paymentRequest.accessCode),
+      encRequestLength: paymentRequest.encRequest?.length || 0,
+    });
 
     return res.status(200).json({
       success: true,
@@ -504,8 +658,23 @@ const handlePaymentResponse = async (req, res) => {
       req.body.order_id ||
       req.query.orderId ||
       req.query.order_id;
-    const result = await processEncryptedResponse(encResp, fallbackOrderId);
+    console.log("[CCA CALLBACK] callback received:", {
+      hasEncryptedResponse: Boolean(encResp),
+      fallbackOrderId: fallbackOrderId || null,
+    });
+
+    const result = await processEncryptedResponse(
+      encResp,
+      fallbackOrderId,
+      "callback",
+    );
     const { payment } = result;
+
+    console.log("[CCA CALLBACK] callback processed:", {
+      orderId: payment.orderId,
+      status: payment.status,
+      alreadyVerified: Boolean(result.alreadyVerified),
+    });
 
     return res.send(`
       <html>
@@ -531,6 +700,12 @@ const handlePaymentResponse = async (req, res) => {
 const verifyPayment = async (req, res) => {
   try {
     const { encResponse, encResp, orderId } = req.body;
+    console.log("[CCA VERIFY] request received:", {
+      orderId: orderId || null,
+      hasEncryptedResponse: Boolean(encResponse || encResp),
+      encryptedResponseLength: String(encResponse || encResp || "").length,
+    });
+
     const result = await processEncryptedResponse(
       encResponse || encResp,
       orderId,
@@ -582,6 +757,7 @@ const cancelPayment = async (req, res) => {
     if (payment.status === "Pending") {
       payment.status = "Cancelled";
       await payment.save();
+      console.log("[ORDER UPDATED] pending payment cancelled:", { orderId });
     }
 
     return res.status(200).json({
@@ -706,10 +882,20 @@ const cancelOrRefundOrder = async (req, res) => {
       version: "1.1",
     });
 
-    console.log("Refund request submitted for order:", orderId);
-    console.log("CCAvenue reference number:", payment.ccavenueReferenceNo);
-    console.log("Refund amount:", refundRequest.refund_amount);
-    console.log("Refund reference number:", refundReferenceNo);
+    console.log("[REFUND REQUEST] prepared:", {
+      orderId,
+      refundAmount: refundRequest.refund_amount,
+      hasReference: Boolean(payment.ccavenueReferenceNo),
+      refundReferenceNo,
+    });
+    console.log("[REFUND API REQUEST] sending:", {
+      endpoint: "https://api.ccavenue.com/apis/servlet/DoWebTrans",
+      fieldNames: Array.from(formData.keys()),
+      accessCodeExists: Boolean(ccavenueConfig.accessCode),
+      accessCodeLength: ccavenueConfig.accessCode?.length || 0,
+      maskedAccessCode: maskSecret(ccavenueConfig.accessCode),
+      encryptedRequestLength: encryptedRequest.length,
+    });
 
     const refundResponse = await fetch(
       "https://api.ccavenue.com/apis/servlet/DoWebTrans",
@@ -724,13 +910,13 @@ const cancelOrRefundOrder = async (req, res) => {
     );
 
     const rawRefundResponse = await refundResponse.text();
-    console.log("CCAvenue refund HTTP status:", refundResponse.status);
+    console.log("[REFUND API RESPONSE] HTTP status:", refundResponse.status);
     console.log(
-      "CCAvenue refund response content-type:",
+      "[REFUND API RESPONSE] content-type:",
       refundResponse.headers.get("content-type"),
     );
     console.log(
-      "CCAvenue refund response data type:",
+      "[REFUND API RESPONSE] data type:",
       typeof rawRefundResponse,
     );
 
@@ -747,20 +933,20 @@ const cancelOrRefundOrder = async (req, res) => {
       /^[0-9a-f]+$/i.test(normalizedEncResponse);
 
     console.log(
-      "CCAvenue refund response data:",
+      "[REFUND API RESPONSE] safe fields:",
       redactRefundResponseForLog(parsedRefundResponse),
     );
-    console.log("CCAvenue refund response top-level fields:", topLevelFields);
+    console.log("[REFUND RESPONSE PARSED] fields:", topLevelFields);
     console.log(
-      "CCAvenue refund response has enc_response:",
+      "[REFUND RESPONSE PARSED] has enc_response:",
       Boolean(normalizedEncResponse),
     );
     console.log(
-      "CCAvenue refund enc_response length:",
+      "[REFUND RESPONSE PARSED] enc_response length:",
       normalizedEncResponse.length,
     );
     console.log(
-      "CCAvenue refund enc_response appears hex:",
+      "[REFUND RESPONSE PARSED] enc_response appears hex:",
       isHexCiphertext,
     );
 
@@ -774,28 +960,24 @@ const cancelOrRefundOrder = async (req, res) => {
       const plainGatewayError =
         parsedRefundResponse.error_desc ||
           parsedRefundResponse.errorDesc ||
+          parsedRefundResponse.enc_error_code ||
           normalizedEncResponse ||
           "CCAvenue rejected the refund API request";
 
-      console.warn(
-        "CCAvenue refund plain error response:",
-        plainGatewayError,
-      );
+      console.warn("[REFUND STATUS] API-level failure:", plainGatewayError);
 
       refundOutcome = {
         status: "REFUND_FAILED",
         message: `CCAvenue rejected the refund API request: ${plainGatewayError}`,
       };
       console.warn(
-        "CCAvenue refund response is plain text because API status=1; AES decryption skipped.",
+        "[REFUND STATUS] status=1; plain response handled without AES decryption.",
       );
     } else if (normalizedEncResponse && !isHexCiphertext) {
       refundOutcome = buildUnverifiedRefundOutcome(
         "CCAvenue returned enc_response that is not valid hex ciphertext",
       );
-      console.warn(
-        "CCAvenue refund enc_response is not valid hex ciphertext; AES decryption skipped.",
-      );
+      console.warn("[REFUND STATUS] enc_response is not valid hex; AES decryption skipped.");
     } else if (normalizedEncResponse) {
       try {
         const decrypted = decrypt(
@@ -804,13 +986,13 @@ const cancelOrRefundOrder = async (req, res) => {
         );
         decryptedRefundPayload = parseCCAvenueResponsePayload(decrypted);
         console.log(
-          "CCAvenue refund decrypted response fields:",
+          "[REFUND RESPONSE PARSED] decrypted fields:",
           Object.keys(decryptedRefundPayload),
         );
         refundOutcome = determineRefundOutcome(decryptedRefundPayload);
       } catch (error) {
         console.error(
-          "CCAvenue refund response decryption failed; refund status remains unverified:",
+          "[REFUND STATUS] response decryption failed; status remains unverified:",
           error.message,
         );
         refundOutcome = buildUnverifiedRefundOutcome(
@@ -819,7 +1001,7 @@ const cancelOrRefundOrder = async (req, res) => {
       }
     } else {
       console.warn(
-        "CCAvenue refund response did not contain enc_response; inspecting plain response fields.",
+        "[REFUND RESPONSE PARSED] no enc_response; inspecting plain response fields.",
       );
       refundOutcome = determineRefundOutcome(parsedRefundResponse);
     }
@@ -843,8 +1025,13 @@ const cancelOrRefundOrder = async (req, res) => {
 
     await payment.save();
 
-    console.log("Refund status saved:", payment.refundStatus);
-    console.log("Refund HTTP status:", refundResponse.status);
+    console.log("[REFUND STATUS] saved:", {
+      orderId,
+      refundStatus: payment.refundStatus,
+      paymentStatus: payment.status,
+      refundHttpStatus: refundResponse.status,
+    });
+    console.log("[ORDER UPDATED] refund fields saved:", { orderId });
 
     if (refundOutcome.status === "REFUNDED") {
       return res.status(200).json({

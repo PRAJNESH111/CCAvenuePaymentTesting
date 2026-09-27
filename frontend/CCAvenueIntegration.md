@@ -134,7 +134,7 @@ const result = await new CCAvenueSDK().initTransaction(order);
 
 If the SDK reports a non-zero status code, the app treats it as an error. If it returns `Aborted` or `Cancelled` without an encrypted response, the app calls the local cancellation endpoint.
 
-### Step 5: The backend verifies the encrypted response
+### Step 5: The backend verifies the encrypted response (authoritative path)
 
 ```http
 POST /api/ccavenue/verify
@@ -146,7 +146,7 @@ Content-Type: application/json
 }
 ```
 
-The backend decrypts the response, parses JSON or URL-encoded key/value data, requires order ID/currency/amount/order status, confirms the response order ID matches the requested order, loads the MongoDB payment, confirms currency and amount match, and saves transaction ID, payment mode, CCAvenue reference number, and the full parsed response in `ccaResponse`.
+`/api/ccavenue/verify` is the primary and authoritative finalization endpoint for the native SDK flow. The backend decrypts the response, parses JSON or URL-encoded key/value data, requires order ID/currency/amount/order status, confirms the response order ID matches the requested order, loads the MongoDB payment, confirms currency and amount match, requires transaction/reference information for a successful response, and saves transaction ID, payment mode, CCAvenue reference number, and the full parsed response in `ccaResponse`.
 
 Status mapping:
 
@@ -160,7 +160,13 @@ The reference number is taken from `reference_no`, compatible reference fields, 
 
 ### Step 6: The result screen refreshes the saved order
 
-After verification, the app navigates to `/payment-result` with the order ID and status. The screen immediately calls `GET /api/orders/:orderId`. The database value is the source of truth, so the screen can show the final status even if the navigation parameter is intermediate.
+After verification, the app navigates to `/payment-result` with the order ID and temporary status. The screen immediately calls `GET /api/orders/:orderId`. The database value is the only payment source of truth; navigation parameters are UI hints and cannot mark an order successful.
+
+### Verification idempotency
+
+The backend finalizes a payment with a conditional MongoDB update that only changes an order whose status is still `Pending`. This protects against two SDK verification requests arriving at the same time.
+
+If the same successful response is submitted again, the backend returns the already saved successful payment without creating an order, replacing valid transaction information, or performing another business operation. Repeated failed/cancelled finalization also returns the saved terminal result. A response that conflicts with an already finalized status is rejected.
 
 ## 3. Callback/deep-link flow
 
@@ -176,7 +182,7 @@ The backend accepts both `GET` and `POST`, looks for `encResp` or `encResponse` 
 avenue-testing://payment-result?orderId=<id>&status=<status>
 ```
 
-The native SDK flow normally verifies directly through `/api/ccavenue/verify`. The callback route remains available for gateway/browser callback scenarios.
+The native SDK flow verifies directly through `/api/ccavenue/verify`; it does not treat this redirect as proof of payment. The callback route remains available for gateway/browser callback scenarios and uses the same idempotent backend finalization function. If a callback arrives after `/verify` already finalized a successful order, it returns the saved result rather than creating a second payment-success operation.
 
 ## 4. Cancellation and refund flow
 
@@ -217,17 +223,18 @@ The encrypted refund JSON contains:
 }
 ```
 
-The request uses `command=refundOrder`, `request_type=json`, `response_type=json`, and `version=1.1`. Refund responses may be encrypted or plain:
+The request uses `command=refundOrder`, `request_type=json`, `response_type=json`, and `version=1.1`. The refund amount is loaded from MongoDB on the server; the frontend cannot choose it. Refund responses may be encrypted or plain:
 
 - CCAvenue API `status=1` is treated as a plain API-level failure.
 - A valid `enc_response` is decrypted and inspected.
 - A missing encrypted response is interpreted from plain response fields.
+- If `status=1` and CCAvenue supplies an error code such as `enc_error_code=51407`, the result is an application-level refund failure, even when the HTTP status is `200`.
 - Invalid ciphertext or decryption failure becomes `REFUND_RESPONSE_UNVERIFIED`.
 - Success-like statuses become `REFUNDED`.
 - Pending-like statuses become `REFUND_PENDING`.
 - Failure-like statuses become `REFUND_FAILED`.
 
-When a refund is confirmed as `REFUNDED`, the payment status also becomes `Cancelled`. The saved refund fields include reference, amount, request time, completion time, status, and error message. Repeated requests are rejected when the order is already refunded, pending, or unverified.
+When a refund is confirmed as `REFUNDED`, the payment status also becomes `Cancelled`. A submitted or ambiguous refund does not immediately change a successful payment to cancelled: `Success` plus `REFUND_PENDING` means the customer paid successfully while the refund is still processing. The saved refund fields include reference, amount, request time, completion time, status, and error message. Repeated requests are rejected when the order is already refunded, pending, or unverified.
 
 ## 5. Encryption and security
 
@@ -238,7 +245,7 @@ When a refund is confirmed as `REFUNDED`, the payment status also becomes `Cance
 3. Use fixed IV bytes `00 01 02 ... 0f`.
 4. Return ciphertext as hexadecimal.
 
-The same algorithm is used for payment requests, payment responses, and refund requests/responses. The backend logs response metadata and field names for troubleshooting, while refund ciphertext and credential-like fields are redacted. Never commit real credentials, working keys, tokens, or customer payment data.
+The same algorithm is used for payment requests, payment responses, and refund requests/responses. The backend logs labeled safe diagnostics such as request field names, HTTP status, response field names, ciphertext length, and masked access-code metadata. It never logs the working key, complete access code, complete encrypted request/response, or unnecessary customer-sensitive data. A `status=1` refund response is handled as plain application-level failure and is not passed to AES decryption, preventing `ERR_OSSL_WRONG_FINAL_BLOCK_LENGTH`.
 
 ## 6. API reference
 
@@ -389,10 +396,14 @@ For Android or iOS native development, use `npm run android` or `npm run ios` af
 - Tampered response order ID, amount, or currency is rejected.
 - Missing or malformed encrypted SDK response is handled safely.
 - Verification/network failure does not pretend that payment succeeded.
+- Repeating the same `/api/ccavenue/verify` request returns the saved result without overwriting the verified transaction.
+- A callback arriving after successful `/verify` returns the saved result without a duplicate finalization.
+- A malformed callback cannot mark an order `Success`.
 - Orders screen loads newest orders and refreshes them.
 - Pending cancellation does not call the refund gateway.
 - Successful cancellation sends a refund request.
 - Confirmed refund becomes `REFUNDED` and payment becomes `Cancelled`.
+- HTTP `200` with refund `status=1` and `enc_error_code=51407` becomes `REFUND_FAILED`, not `REFUNDED`.
 - Pending, failed, and unverified refund responses are displayed correctly.
 - Duplicate refund attempts are rejected.
 - Physical-device testing uses a reachable backend URL.

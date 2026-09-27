@@ -177,7 +177,7 @@ export default function CCAvenueCheckout({ customer } = {}) {
       const sdkStatusMessage =
         data?.statusMessage ?? parsedSdkResult?.statusMessage;
 
-      console.log("CCAvenue SDK status:", {
+      console.log("[CCA SDK RESULT] status:", {
         statusCode: sdkStatusCode,
         statusMessage: sdkStatusMessage,
         orderStatus: data?.orderStatus,

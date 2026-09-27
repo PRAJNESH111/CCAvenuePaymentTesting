@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-import { cancelOrder, getOrders } from "../services/payment.service";
+import { cancelOrder, getOrders, refundOrder } from "../services/payment.service";
 
 export default function OrdersScreen() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -36,7 +36,7 @@ export default function OrdersScreen() {
 
   const handleCancel = async (orderId: string) => {
     Alert.alert(
-      "Are you sure you want to cancel this order?",
+      "Cancel this pending order?",
       "",
       [
         { text: "Cancel", style: "cancel" },
@@ -46,30 +46,37 @@ export default function OrdersScreen() {
           onPress: async () => {
             try {
               const response = await cancelOrder(orderId);
-
-              if (response?.payment?.refundStatus === "REFUNDED") {
-                Alert.alert(
-                  "Order cancelled",
-                  "Order cancelled and refund processed successfully.",
-                );
-              } else if (response?.payment?.refundStatus === "REFUND_PENDING") {
-                Alert.alert(
-                  "Order cancellation requested",
-                  "Order cancellation requested. Refund is being processed.",
-                );
-              } else {
-                Alert.alert(
-                  "Unable to process the refund",
-                  "Unable to process the refund. Please try again.",
-                );
-              }
-
+              Alert.alert("Order cancelled", response?.message || "Order cancelled.");
               await fetchOrders();
             } catch (error) {
               Alert.alert(
-                "Unable to process the refund",
-                "Unable to process the refund. Please try again.",
+                "Unable to cancel order",
+                "This order could not be cancelled.",
               );
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleRefund = async (order: any) => {
+    Alert.alert(
+      "Confirm refund",
+      `Refund ₹${Number(order.amount).toFixed(2)} for this successful order?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Refund",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await refundOrder(order.orderId);
+              Alert.alert("Refund request", response?.message || "Refund request submitted.");
+              await fetchOrders();
+            } catch (error) {
+              Alert.alert("Unable to process refund", "The refund request could not be completed.");
+              await fetchOrders();
             }
           },
         },
@@ -102,18 +109,34 @@ export default function OrdersScreen() {
         <Text style={styles.emptyState}>No orders available.</Text>
       ) : (
         orders.map((order) => {
-          const canCancel =
-            ["Pending", "Success"].includes(order.status) &&
-            order.refundStatus !== "REFUNDED" &&
-            order.refundStatus !== "REFUND_PENDING" &&
-            order.refundStatus !== "REFUND_RESPONSE_UNVERIFIED";
+          const refundStatus = order.refundStatus || "NOT_REQUESTED";
+          const canCancel = order.status === "Pending";
+          const canRefund =
+            order.status === "Success" &&
+            !["REFUND_PENDING", "REFUNDED", "REFUND_RESPONSE_UNVERIFIED"].includes(
+              refundStatus,
+            );
 
           return (
             <View key={order._id} style={styles.card}>
               <Text style={styles.orderId}>Order ID: {order.orderId}</Text>
               <Text style={styles.meta}>Status: {order.status}</Text>
               <Text style={styles.meta}>Amount: ₹{Number(order.amount).toFixed(2)}</Text>
-              <Text style={styles.meta}>Refund: {order.refundStatus || "NOT_REQUESTED"}</Text>
+              <Text style={styles.meta}>Refund: {refundStatus}</Text>
+              {refundStatus === "REFUND_PENDING" ? (
+                <Text style={styles.refundMessage}>Refund Pending</Text>
+              ) : null}
+              {refundStatus === "REFUNDED" ? (
+                <Text style={styles.refundMessage}>Refunded</Text>
+              ) : null}
+              {refundStatus === "REFUND_FAILED" ? (
+                <Text style={styles.refundMessage}>
+                  Refund Failed{order.refundError ? `: ${order.refundError}` : ""}
+                </Text>
+              ) : null}
+              {refundStatus === "REFUND_RESPONSE_UNVERIFIED" ? (
+                <Text style={styles.refundMessage}>Refund Requires Verification</Text>
+              ) : null}
 
               {canCancel ? (
                 <TouchableOpacity
@@ -121,8 +144,16 @@ export default function OrdersScreen() {
                   onPress={() => handleCancel(order.orderId)}
                 >
                   <Text style={styles.cancelButtonText}>
-                    {order.status === "Success" ? "Cancel / Refund" : "Cancel Order"}
+                    Cancel Order
                   </Text>
+                </TouchableOpacity>
+              ) : null}
+              {canRefund ? (
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => handleRefund(order)}
+                >
+                  <Text style={styles.cancelButtonText}>Refund</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -186,5 +217,10 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  refundMessage: {
+    fontSize: 14,
+    marginTop: 8,
+    color: "#8a1c1c",
   },
 });

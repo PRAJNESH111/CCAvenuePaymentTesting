@@ -775,7 +775,7 @@ const cancelPayment = async (req, res) => {
   }
 };
 
-const cancelOrRefundOrder = async (req, res) => {
+const cancelOrder = async (req, res) => {
   try {
     const orderId = req.params.orderId || req.body.orderId || req.query.orderId;
 
@@ -795,8 +795,6 @@ const cancelOrRefundOrder = async (req, res) => {
       });
     }
 
-    // A payment that never completed can be cancelled locally. No gateway
-    // refund is needed because no successful transaction exists.
     if (payment.status === "Pending") {
       payment.status = "Cancelled";
       await payment.save();
@@ -808,10 +806,72 @@ const cancelOrRefundOrder = async (req, res) => {
       });
     }
 
-    if (payment.status !== "Success") {
+    if (payment.status === "Cancelled") {
+      return res.status(200).json({
+        success: true,
+        message: "Order was already cancelled",
+        payment,
+      });
+    }
+
+    if (payment.status === "Success") {
+      return res.status(409).json({
+        success: false,
+        message: "This order has already been successfully paid. Use the Refund action instead.",
+        payment,
+      });
+    }
+
+    return res.status(409).json({
+      success: false,
+      message: "This order has already failed and cannot be cancelled.",
+      payment,
+    });
+  } catch (error) {
+    console.error("Cancel order error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to cancel order",
+      error: error.message,
+    });
+  }
+};
+
+const refundOrder = async (req, res) => {
+  try {
+    const orderId = req.params.orderId || req.body.orderId || req.query.orderId;
+
+    if (!orderId) {
       return res.status(400).json({
         success: false,
-        message: "Only pending or successful orders can be cancelled.",
+        message: "orderId is required",
+      });
+    }
+
+    let payment = await Payment.findOne({ orderId });
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment order not found",
+      });
+    }
+
+    // A payment that never completed can be cancelled locally. No gateway
+    // refund is needed because no successful transaction exists.
+    if (payment.status === "Pending") {
+      return res.status(409).json({
+        success: false,
+        message: "Only successfully paid orders can be refunded.",
+        payment,
+      });
+    }
+
+    if (payment.status !== "Success") {
+      return res.status(409).json({
+        success: false,
+        message: "Only successfully paid orders can be refunded.",
         payment,
       });
     }
@@ -867,6 +927,38 @@ const cancelOrRefundOrder = async (req, res) => {
       currency: payment.currency || "INR",
       reason: "Customer cancellation request",
     };
+
+    // Atomically claim the refund before calling CCAvenue so concurrent
+    // requests cannot submit multiple refunds for the same payment.
+    const claimedPayment = await Payment.findOneAndUpdate(
+      {
+        _id: payment._id,
+        status: "Success",
+        refundStatus: { $in: ["NOT_REQUESTED", null] },
+      },
+      {
+        $set: {
+          refundReferenceNo,
+          refundAmount,
+          refundRequestedAt: new Date(),
+          refundCompletedAt: null,
+          refundError: null,
+          refundStatus: "REFUND_PENDING",
+        },
+      },
+      { new: true },
+    );
+
+    if (!claimedPayment) {
+      const latestPayment = await Payment.findById(payment._id);
+      return res.status(409).json({
+        success: false,
+        message: "A refund request is already being processed for this order.",
+        payment: latestPayment || payment,
+      });
+    }
+
+    payment = claimedPayment;
 
     const encryptedRequest = encrypt(
       JSON.stringify(refundRequest),
@@ -1006,9 +1098,6 @@ const cancelOrRefundOrder = async (req, res) => {
       refundOutcome = determineRefundOutcome(parsedRefundResponse);
     }
 
-    payment.refundReferenceNo = refundReferenceNo;
-    payment.refundAmount = refundAmount;
-    payment.refundRequestedAt = new Date();
     payment.refundCompletedAt =
       refundOutcome.status === "REFUNDED" ? new Date() : null;
     payment.refundError =
@@ -1074,9 +1163,6 @@ const cancelOrRefundOrder = async (req, res) => {
     });
   }
 };
-
-const cancelOrder = cancelOrRefundOrder;
-const refundOrder = cancelOrRefundOrder;
 
 module.exports = {
   createOrder,

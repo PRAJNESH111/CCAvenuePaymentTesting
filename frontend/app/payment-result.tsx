@@ -9,7 +9,11 @@ import {
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import { cancelOrder, getOrderById } from "../services/payment.service";
+import {
+  cancelOrder,
+  getOrderById,
+  refundOrder,
+} from "../services/payment.service";
 
 export default function PaymentResult() {
   const { orderId, status } = useLocalSearchParams<{
@@ -24,11 +28,12 @@ export default function PaymentResult() {
   const orderIdentifier = typeof orderId === "string" ? orderId : "";
   const paymentStatus = order?.status || status || "Unknown";
   const refundStatus = order?.refundStatus || "NOT_REQUESTED";
-  const canCancelOrder =
+  const canCancelOrder = paymentStatus === "Pending";
+  const canRefundOrder =
     paymentStatus === "Success" &&
-    refundStatus !== "REFUNDED" &&
-    refundStatus !== "REFUND_PENDING" &&
-    refundStatus !== "REFUND_RESPONSE_UNVERIFIED";
+    !["REFUND_PENDING", "REFUNDED", "REFUND_RESPONSE_UNVERIFIED"].includes(
+      refundStatus,
+    );
 
   const refreshOrder = async () => {
     if (!orderIdentifier) {
@@ -59,7 +64,7 @@ export default function PaymentResult() {
     }
 
     Alert.alert(
-      "Are you sure you want to cancel this order?",
+      "Cancel this pending order?",
       "",
       [
         { text: "Cancel", style: "cancel" },
@@ -71,31 +76,46 @@ export default function PaymentResult() {
 
             try {
               const response = await cancelOrder(orderIdentifier);
-              const nextRefundStatus = response?.payment?.refundStatus;
-
-              if (nextRefundStatus === "REFUNDED") {
-                Alert.alert(
-                  "Order cancelled",
-                  "Order cancelled and refund processed successfully.",
-                );
-              } else if (nextRefundStatus === "REFUND_PENDING") {
-                Alert.alert(
-                  "Order cancellation requested",
-                  "Order cancellation requested. Refund is being processed.",
-                );
-              } else {
-                Alert.alert(
-                  "Unable to process the refund",
-                  "Unable to process the refund. Please try again.",
-                );
-              }
-
+              Alert.alert("Order cancelled", response?.message || "Order cancelled.");
               await refreshOrder();
             } catch (error) {
               Alert.alert(
-                "Unable to process the refund",
-                "Unable to process the refund. Please try again.",
+                "Unable to cancel order",
+                "This order could not be cancelled.",
               );
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const handleRefundOrder = async () => {
+    if (!orderIdentifier || !order?.amount) {
+      return;
+    }
+
+    Alert.alert(
+      "Confirm refund",
+      `Refund ₹${Number(order.amount).toFixed(2)} for this successful order?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Refund",
+          style: "destructive",
+          onPress: async () => {
+            setLoading(true);
+
+            try {
+              const response = await refundOrder(orderIdentifier);
+              Alert.alert("Refund request", response?.message || "Refund request submitted.");
+              await refreshOrder();
+            } catch (error) {
+              Alert.alert("Unable to process refund", "The refund request could not be completed.");
+              await refreshOrder();
             } finally {
               setLoading(false);
             }
@@ -129,6 +149,12 @@ export default function PaymentResult() {
       {refundStatus && refundStatus !== "NOT_REQUESTED" ? (
         <Text style={styles.refundStatus}>Refund Status: {refundStatus}</Text>
       ) : null}
+      {refundStatus === "REFUND_FAILED" && order?.refundError ? (
+        <Text style={styles.refundError}>{order.refundError}</Text>
+      ) : null}
+      {refundStatus === "REFUND_RESPONSE_UNVERIFIED" ? (
+        <Text style={styles.refundError}>Refund Requires Verification</Text>
+      ) : null}
 
       {refreshing ? <ActivityIndicator style={styles.loader} /> : null}
 
@@ -140,6 +166,17 @@ export default function PaymentResult() {
         >
           <Text style={styles.cancelButtonText}>
             {loading ? "Processing..." : "Cancel Order"}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+      {canRefundOrder ? (
+        <TouchableOpacity
+          style={[styles.cancelButton, loading && styles.cancelButtonDisabled]}
+          onPress={handleRefundOrder}
+          disabled={loading}
+        >
+          <Text style={styles.cancelButtonText}>
+            {loading ? "Processing..." : "Refund"}
           </Text>
         </TouchableOpacity>
       ) : null}
@@ -172,6 +209,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#0d6efd",
     marginBottom: 16,
+  },
+  refundError: {
+    color: "#8a1c1c",
+    fontSize: 14,
+    marginBottom: 12,
+    textAlign: "center",
   },
   loader: {
     marginVertical: 12,

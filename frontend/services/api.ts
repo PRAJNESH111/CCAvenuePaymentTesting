@@ -1,7 +1,9 @@
 import { Platform } from "react-native";
 
 const localDevelopmentApiUrl =
-  Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
+  Platform.OS === "android"
+    ? "http://10.0.2.2:5150"
+    : "http://localhost:5150";
 
 const DEFAULT_API_URLS = [
   process.env.EXPO_PUBLIC_API_URL?.trim(),
